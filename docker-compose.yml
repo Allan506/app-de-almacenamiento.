@@ -1,0 +1,13 @@
+services:
+  nube:
+    build: .
+    container_name: nube
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
