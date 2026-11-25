@@ -54,4 +54,10 @@ para que el codigo OTP aparezca en la interfaz.
   (los modelos viven en `app/models.py` y se crean en `init_db`).
 - Los tests fijan variables de entorno antes de importar `app.main` (ver
   `backend/tests/conftest.py`); cualquier modulo que lea ajustes al importar debe
-  respetar ese orden.
+  respetar ese orden. La suite debe pasar en SQLite y en PostgreSQL:
+  `DATABASE_URL=postgresql://user:pass@localhost:5432/nube_test pytest -q`.
+- `app/database.py` distingue SQLite (hilos) de Postgres (pool reciclado); no mezclar
+  `connect_args` de SQLite con un DSN de Postgres.
+- Despliegue: `render.yaml` (Render free + Neon + Telegram) y `docs/deploy-render.md`.
+  En Render el contenedor escucha en `$PORT` y `APP_URL` se deduce de
+  `RENDER_EXTERNAL_URL`; el disco es efimero, no guardar nada solo en `data/`.

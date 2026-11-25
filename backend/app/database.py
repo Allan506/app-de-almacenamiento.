@@ -9,8 +9,21 @@ from .config import get_settings
 
 settings = get_settings()
 
-connect_args = {"check_same_thread": False} if settings.resolved_database_url.startswith("sqlite") else {}
-engine = create_engine(settings.resolved_database_url, connect_args=connect_args, pool_pre_ping=True)
+DATABASE_URL = settings.resolved_database_url
+
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(
+        DATABASE_URL, connect_args={"check_same_thread": False}, pool_pre_ping=True
+    )
+else:
+    # Managed Postgres (Neon, Render) drops idle connections and caps concurrency.
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=5,
+    )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

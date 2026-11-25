@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -52,6 +54,14 @@ class Settings(BaseSettings):
 
     cors_origins: str = "*"
 
+    @model_validator(mode="after")
+    def _platform_defaults(self) -> "Settings":
+        # Render exposes the public URL; use it when APP_URL was not set explicitly.
+        render_url = os.getenv("RENDER_EXTERNAL_URL")
+        if render_url and self.app_url == "http://localhost:12000":
+            self.app_url = render_url.rstrip("/")
+        return self
+
     @property
     def resolved_data_dir(self) -> Path:
         path = Path(self.data_dir)
@@ -61,7 +71,13 @@ class Settings(BaseSettings):
     @property
     def resolved_database_url(self) -> str:
         if self.database_url:
-            return self.database_url
+            url = self.database_url.strip()
+            # Heroku/Render style DSNs use the deprecated postgres:// prefix.
+            if url.startswith("postgres://"):
+                url = "postgresql+psycopg://" + url[len("postgres://") :]
+            elif url.startswith("postgresql://"):
+                url = "postgresql+psycopg://" + url[len("postgresql://") :]
+            return url
         return f"sqlite:///{self.resolved_data_dir / 'nube.db'}"
 
     @property

@@ -42,7 +42,7 @@ Aplicacion completa (backend + frontend) lista para ejecutar en local, en un VPS
 
 | Capa | Tecnologia |
 | --- | --- |
-| API | FastAPI, SQLAlchemy 2, SQLite (o cualquier base compatible) |
+| API | FastAPI, SQLAlchemy 2, SQLite o PostgreSQL |
 | Autenticacion | OTP + JWT (PyJWT) |
 | Almacenamiento | Disco local o Telegram Bot API |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, React Router |
@@ -134,7 +134,21 @@ cp backend/.env.example .env    # edita APP_URL y credenciales
 docker compose up -d --build
 ```
 
-El servicio expone el puerto `8000` y persiste datos en `./data`.
+El servicio expone el puerto `8000` (o `$PORT` si esta definido) y persiste datos en `./data`.
+
+## Desplegar en Render (24/7, gratis)
+
+El repo incluye `render.yaml`, un blueprint listo para el plan gratuito de Render. Como ese plan no
+tiene disco persistente, la configuracion usa Postgres externo (Neon) para la base de datos y
+Telegram para el contenido de los archivos:
+
+1. Crea una base gratis en [Neon](https://neon.tech) y copia su `DATABASE_URL`.
+2. Crea un bot con [@BotFather](https://t.me/BotFather) y obten tu `chat_id`.
+3. En Render: **New → Blueprint** → elige este repo → **Apply**.
+4. Rellena `DATABASE_URL`, `TELEGRAM_BOT_TOKEN` y `TELEGRAM_CHAT_ID`.
+
+Guia detallada, alternativas (Render Starter con disco, VPS) y solucion de problemas:
+[`docs/deploy-render.md`](docs/deploy-render.md).
 
 ## Pruebas
 
@@ -143,7 +157,11 @@ pip install -r backend/requirements-dev.txt
 cd backend && python -m pytest -q
 ```
 
-Cubren autenticacion OTP, subida y descarga byte a byte, carpetas, papelera, busqueda, cuotas, enlaces publicos con y sin contrasena, expiracion, aislamiento entre usuarios y borrado de cuenta.
+Cubren autenticacion OTP, subida y descarga byte a byte, carpetas, papelera, busqueda, cuotas, enlaces publicos con y sin contrasena, expiracion, aislamiento entre usuarios y borrado de cuenta. La suite pasa igual en SQLite y en PostgreSQL:
+
+```bash
+DATABASE_URL=postgresql://usuario:clave@localhost:5432/nube_test python -m pytest -q
+```
 
 ## API
 

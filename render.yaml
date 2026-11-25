@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: nube
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: OTP_DEV_MODE
+        value: "false"
+      # Los archivos van a Telegram para que sobrevivan a los reinicios del plan free.
+      - key: STORAGE_BACKEND
+        value: telegram
+      - key: OTP_CHANNEL
+        value: telegram
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      # Postgres gestionado (Neon). Sin esto la base vive en el disco efimero.
+      - key: DATABASE_URL
+        sync: false
+      - key: DEFAULT_QUOTA_BYTES
+        value: "0"
+      - key: MAX_UPLOAD_BYTES
+        value: "0"

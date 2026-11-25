@@ -6,7 +6,6 @@ _TMP = Path(tempfile.mkdtemp(prefix="nube-tests-"))
 os.environ.update(
     {
         "DATA_DIR": str(_TMP),
-        "DATABASE_URL": f"sqlite:///{_TMP / 'test.db'}",
         "STORAGE_BACKEND": "local",
         "OTP_DEV_MODE": "true",
         "OTP_RESEND_COOLDOWN": "0",
@@ -15,6 +14,7 @@ os.environ.update(
         "APP_URL": "http://testserver",
     }
 )
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{_TMP / 'test.db'}")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -23,7 +23,16 @@ from app.main import app  # noqa: E402
 
 
 @pytest.fixture(scope="session")
-def client():
+def fresh_database():
+    from app.database import Base, engine
+
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+@pytest.fixture(scope="session")
+def client(fresh_database):
     with TestClient(app) as test_client:
         yield test_client
 
