@@ -16,7 +16,7 @@ Con esas dos piezas la instancia puede reiniciarse sin perder nada.
 
 ## 1. Base de datos en Neon (5 minutos)
 
-1. Crea una cuenta en https://neon.tech y un proyecto (region `eu-central-1` si estas en Europa).
+1. Crea una cuenta en https://neon.tech y un proyecto. Usa la region mas cercana a tu servicio de Render (`ohio` ↔ `us-east-2`, `frankfurt` ↔ `eu-central-1`).
 2. Copia la cadena de conexion, que tiene esta forma:
 
 ```

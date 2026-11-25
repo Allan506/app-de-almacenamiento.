@@ -3,7 +3,7 @@ services:
     name: nube
     runtime: docker
     plan: free
-    region: frankfurt
+    region: ohio
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     autoDeploy: true
