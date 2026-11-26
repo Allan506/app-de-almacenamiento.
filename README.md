@@ -146,6 +146,14 @@ estatico (~270 KB): las subidas y descargas van directas entre tu navegador y Te
 
 ![Nube en GitHub Pages](docs/screenshots/pages-landing.png)
 
+Al abrir un archivo no hay que descargarlo: el reproductor de audio y video trae transporte completo,
+velocidad 0.5x-2x, repeticion, aleatorio, lista de la carpeta, ventana flotante y memoria de posicion; el
+resto de formatos se ven en la propia app (imagenes con zoom, PDF, texto, codigo, Markdown, JSON, CSV,
+ZIP y una ficha con descarga para lo que el navegador no sabe abrir). Desde la vista previa puedes
+renombrar, mover o eliminar sin volver a la lista.
+
+![Reproductor de audio](docs/screenshots/pages-player.png)
+
 Es instalable (PWA): en Chrome aparece **Instalar Nube** y en iOS se anade a la pantalla de inicio, con
 armazon offline incluido. En el movil se comporta como una app nativa: el zoom esta bloqueado (se puede
 soltar en Ajustes) y el boton atras no cierra la app, sino que cierra lo que tengas abierto, vuelve a la
@@ -154,7 +162,7 @@ carpeta anterior y solo sale con una segunda pulsacion.
 ```bash
 cd site
 npm ci
-npm test        # troceado, transporte, arbol y zip
+npm test        # troceado, transporte, arbol, zip, reproductor y vistas previas
 npm run dev     # http://localhost:12001
 npm run build   # dist/
 ```
@@ -261,7 +269,7 @@ frontend/
     pages/         Login, Drive, pagina publica de enlace
     lib/           Cliente de API y utilidades de formato
 site/                 Nube Lite para GitHub Pages (sin backend)
-  src/lib/            Telegram (troceado), IndexedDB, arbol, zip
+  src/lib/            Telegram (troceado), IndexedDB, arbol, zip, reproductor, vistas previas
   src/components/     Setup, unidad, modales
   tests/              vitest
 ```

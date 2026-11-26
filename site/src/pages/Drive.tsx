@@ -183,6 +183,7 @@ export function Drive({
     return sortNodes(liveChildren(live, folderId).filter((node) => matchesKind(node, kind)), sort);
   }, [nodes, trashRoots, section, debounced, kind, sort, folderId]);
 
+  const previewSiblings = useMemo(() => items.filter((node) => node.kind === "file"), [items]);
   const breadcrumb = useMemo(() => buildBreadcrumb(nodes, folderId), [nodes, folderId]);
   const currentFolder = useMemo(() => nodes.find((node) => node.id === folderId) ?? null, [nodes, folderId]);
   const transferRoot = section === "drive" ? folderId : null;
@@ -604,7 +605,27 @@ export function Drive({
         </div>
       )}
 
-      <PreviewModal node={preview} vault={vault} onClose={() => setPreview(null)} onDownload={downloadNode} />
+      <PreviewModal
+        node={preview}
+        siblings={previewSiblings}
+        vault={vault}
+        onClose={() => setPreview(null)}
+        onNavigate={setPreview}
+        onDownload={downloadNode}
+        onRename={(node) => {
+          setPreview(null);
+          handleAction("rename", node);
+        }}
+        onMove={(node) => {
+          setPreview(null);
+          handleAction("move", node);
+        }}
+        onTrash={(node) => {
+          setPreview(null);
+          handleAction("trash", node);
+        }}
+        onToggleFavorite={(node) => handleAction("favorite", node)}
+      />
 
       <MoveModal
         node={moveNode}
