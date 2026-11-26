@@ -230,6 +230,16 @@ export class Vault {
     return blob;
   }
 
+  /** URL que el navegador puede reproducir directamente (solo archivos de un trozo). */
+  async directUrl(node: VaultNode): Promise<string | null> {
+    if (node.kind !== "file" || this.config.driver !== "telegram" || !this.client) return null;
+    try {
+      return await this.client.directUrl(node.chunks);
+    } catch {
+      return null;
+    }
+  }
+
   async zipFolder(
     folder: VaultNode,
     onProgress?: (ratio: number) => void,

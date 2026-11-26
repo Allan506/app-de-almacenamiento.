@@ -98,6 +98,12 @@ El reproductor funciona igual con audio y con video:
 - **Velocidad** de 0.5x a 2x, **repeticion** (apagada, lista, un archivo) y **aleatorio**.
 - **Lista de la carpeta**: cambia de pista sin cerrar el reproductor.
 - **Memoria de posicion**: al volver a abrir sigue donde lo dejaste, archivo por archivo.
+- **Vista previa en vivo**: el espectro de la cancion se dibuja mientras suena, con el estado
+  (*En vivo*, *En pausa*, *Cargando*) al lado.
+- **Descarga que aguanta**: si la conexion se corta a mitad de un trozo, la app se calla 15 s, corta la
+  peticion y **reanuda** por donde iba (cabecera `Range`); si Telegram rechaza el rango, reintenta desde
+  cero. Si aun asi falla y el archivo es de un solo trozo, reproduce **en directo** desde Telegram
+  (el navegador descarga sin CORS) y lo indica con "en directo".
 - **Ventana flotante** (video) y **pantalla completa**.
 - **Atajos**: espacio, flechas (5 s), J/L (10 s), N/P (pista), R (repeticion), S (aleatorio), F y M.
 - El progreso de descarga se muestra mientras llegan los trozos desde Telegram.

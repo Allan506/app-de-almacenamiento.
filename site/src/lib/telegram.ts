@@ -56,9 +56,33 @@ export interface TelegramTransport {
     signal?: AbortSignal,
   ): Promise<T>;
   download(filePath: string, onProgress?: Progress, signal?: AbortSignal): Promise<Blob>;
+  /** URL publica del archivo (solo transportes HTTP). Permite reproducir sin fetch. */
+  fileUrl?(filePath: string): string;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Intentos por trozo: la red movil se corta a menudo a mitad de una descarga grande. */
+const DOWNLOAD_ATTEMPTS = 4;
+/** Sin bytes durante este tiempo se corta la peticion y se reanuda: la red movil se queda muda. */
+const STALL_TIMEOUT_MS = 15000;
+
+function totalBytesOf(response: Response, already: number): number {
+  const range = response.headers.get("content-range");
+  const match = range ? /\/(\d+)$/.exec(range) : null;
+  if (match) return Number(match[1]);
+  const length = Number(response.headers.get("content-length") ?? 0);
+  return length > 0 ? already + length : 0;
+}
+
+function downloadFailure(cause: unknown): Error {
+  if (cause instanceof TelegramError) return cause;
+  const message =
+    cause instanceof Error && /abort/i.test(cause.message)
+      ? "Se cancelo la descarga."
+      : "Se corto la conexion con Telegram al descargar. Comprueba tu red y reintenta; el archivo no se pierde.";
+  return new TelegramError(message, 0, undefined, cause instanceof Error ? cause.message : undefined);
+}
 
 export function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Operacion cancelada", "AbortError");
@@ -196,31 +220,107 @@ export class HttpTelegramTransport implements TelegramTransport {
     });
   }
 
+  /** URL directa del trozo. Sirve para reproducir sin pasar por fetch (sin CORS). */
+  fileUrl(filePath: string): string {
+    return `${this.base}/file/bot${this.token}/${encodeURI(filePath)}`;
+  }
+
   async download(filePath: string, onProgress?: Progress, signal?: AbortSignal): Promise<Blob> {
     throwIfAborted(signal);
-    const response = await fetch(`${this.base}/file/bot${this.token}/${encodeURI(filePath)}`, { signal });
-    if (!response.ok) {
-      const status = response.status;
-      throw new TelegramError(
-        status === 404
-          ? "Telegram ya no tiene ese archivo. Comprueba que el bot y el chat siguen siendo los mismos."
-          : `Telegram devolvio ${status} al descargar un trozo.`,
-        status,
-      );
-    }
-    const total = Number(response.headers.get("content-length") ?? 0);
-    if (!response.body) return response.blob();
-
-    const reader = response.body.getReader();
+    const url = this.fileUrl(filePath);
     const parts: Uint8Array[] = [];
     let loaded = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      parts.push(value);
-      loaded += value.length;
-      onProgress?.(loaded, total || loaded);
+    let total = 0;
+    let lastError: unknown = null;
+    let useRange = true;
+
+    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt += 1) {
+      const controller = new AbortController();
+      const relay = () => controller.abort();
+      signal?.addEventListener("abort", relay, { once: true });
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
+      const kick = () => {
+        if (watchdog) clearTimeout(watchdog);
+        watchdog = setTimeout(() => controller.abort(), STALL_TIMEOUT_MS);
+      };
+      let answered = false;
+
+      try {
+        const headers: Record<string, string> = {};
+        if (loaded > 0 && useRange) headers.Range = `bytes=${loaded}-`;
+        const response = await fetch(url, { signal: controller.signal, headers });
+        answered = true;
+        if (response.status === 416) break;
+
+        if (!response.ok) {
+          const error = new TelegramError(
+            response.status === 404
+              ? "Telegram ya no tiene ese archivo. Comprueba que el bot y el chat siguen siendo los mismos."
+              : `Telegram devolvio ${response.status} al descargar un trozo.`,
+            response.status,
+          );
+          if (response.status === 404 || response.status === 400) throw error;
+          lastError = error;
+          continue;
+        }
+
+        if (loaded > 0 && response.status === 200) {
+          // El servidor ignora el rango: hay que empezar de cero.
+          parts.length = 0;
+          loaded = 0;
+        }
+        total = totalBytesOf(response, loaded);
+        kick();
+
+        const body = response.body;
+        if (!body) {
+          const buffer = new Uint8Array(await response.arrayBuffer());
+          parts.push(buffer);
+          loaded += buffer.length;
+        } else {
+          const reader = body.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            kick();
+            parts.push(value);
+            loaded += value.length;
+            onProgress?.(loaded, total || loaded);
+          }
+        }
+
+        if (total > 0 && loaded < total) {
+          // La conexion cerro el cuerpo antes de tiempo: se reanuda donde quedo.
+          lastError = new Error("Descarga incompleta");
+          await sleep(300 * attempt);
+          continue;
+        }
+        break;
+      } catch (error) {
+        if (signal?.aborted) throw new DOMException("Operacion cancelada", "AbortError");
+        lastError = error;
+        if (error instanceof TelegramError && (error.code === 404 || error.code === 400)) throw error;
+        if (loaded > 0 && useRange && !answered) {
+          // El rango puede exigir un preflight CORS que Telegram no siempre permite:
+          // se reintenta una vez desde cero antes de rendirse.
+          useRange = false;
+          parts.length = 0;
+          loaded = 0;
+          total = 0;
+          continue;
+        }
+        if (attempt >= DOWNLOAD_ATTEMPTS) break;
+        await sleep(400 * attempt);
+      } finally {
+        if (watchdog) clearTimeout(watchdog);
+        signal?.removeEventListener("abort", relay);
+      }
     }
+
+    if (total > 0 && loaded < total) throw downloadFailure(lastError);
+    if (!parts.length) throw downloadFailure(lastError);
+
+    onProgress?.(loaded, total || loaded);
     return new Blob(parts as unknown as BlobPart[]);
   }
 }
@@ -336,6 +436,13 @@ export class TelegramClient {
       throw error;
     }
     return refs;
+  }
+
+  /** URL directa de un archivo de un solo trozo: el navegador lo reproduce sin CORS. */
+  async directUrl(chunks: ChunkRef[]): Promise<string | null> {
+    if (chunks.length !== 1 || !this.transport.fileUrl) return null;
+    const info = await this.transport.call<{ file_path: string }>("getFile", { file_id: chunks[0].file_id });
+    return info.file_path ? this.transport.fileUrl(info.file_path) : null;
   }
 
   async download(chunks: ChunkRef[], onProgress?: Progress, signal?: AbortSignal): Promise<Blob> {

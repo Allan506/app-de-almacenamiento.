@@ -47,21 +47,40 @@ const VOLUME_KEY = "nube-lite.player.volume";
 const RATE_KEY = "nube-lite.player.rate";
 const CACHE_LIMIT = 4;
 
-type Source = { url: string | null; loading: boolean; progress: number; error: string | null };
+type Source = {
+  url: string | null;
+  loading: boolean;
+  progress: number;
+  error: string | null;
+  /** true cuando se reproduce directo desde Telegram (sin pasar por fetch). */
+  streamed: boolean;
+};
 
-function useMediaSource(vault: Vault, node: VaultNode, cache: MutableRefObject<Map<string, string>>): Source {
-  const [state, setState] = useState<Source>({ url: null, loading: true, progress: 0, error: null });
+function friendly(cause: unknown): string {
+  const message = cause instanceof Error ? cause.message : "";
+  if (/failed to fetch|networkerror|load failed|network error/i.test(message)) {
+    return "Se corto la conexion con Telegram. Comprueba tu red y pulsa Reintentar.";
+  }
+  if (/abort/i.test(message)) return "Se cancelo la descarga.";
+  return message || "No se pudo cargar el archivo";
+}
+
+function useMediaSource(vault: Vault, node: VaultNode, cache: MutableRefObject<Map<string, string>>) {
+  const [state, setState] = useState<Source>({ url: null, loading: true, progress: 0, error: null, streamed: false });
+  const [attempt, setAttempt] = useState(0);
+
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
 
   useEffect(() => {
     const cached = cache.current.get(node.id);
     if (cached) {
-      setState({ url: cached, loading: false, progress: 1, error: null });
+      setState({ url: cached, loading: false, progress: 1, error: null, streamed: false });
       return;
     }
 
     let cancelled = false;
     const controller = new AbortController();
-    setState({ url: null, loading: true, progress: 0, error: null });
+    setState({ url: null, loading: true, progress: 0, error: null, streamed: false });
 
     void vault
       .readFile(
@@ -81,25 +100,133 @@ function useMediaSource(vault: Vault, node: VaultNode, cache: MutableRefObject<M
           URL.revokeObjectURL(value);
           cache.current.delete(key);
         }
-        setState({ url, loading: false, progress: 1, error: null });
+        setState({ url, loading: false, progress: 1, error: null, streamed: false });
       })
-      .catch((cause: unknown) => {
+      .catch(async (cause: unknown) => {
+        if (cancelled || controller.signal.aborted) return;
+        // Plan B: dejar que el propio navegador descargue del tiron desde Telegram.
+        const direct = await vault.directUrl(node).catch(() => null);
         if (cancelled) return;
-        setState({
-          url: null,
-          loading: false,
-          progress: 0,
-          error: cause instanceof Error ? cause.message : "No se pudo cargar el archivo",
-        });
+        if (direct) {
+          setState({ url: direct, loading: false, progress: 1, error: null, streamed: true });
+          return;
+        }
+        setState({ url: null, loading: false, progress: 0, error: friendly(cause), streamed: false });
       });
 
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, [vault, node, cache]);
+  }, [vault, node, cache, attempt]);
 
-  return state;
+  return { ...state, retry };
+}
+
+type Graph = { ctx: AudioContext; source: MediaElementAudioSourceNode; analyser: AnalyserNode };
+
+const MEDIA_GRAPHS = new WeakMap<HTMLMediaElement, Graph>();
+
+/** Conecta el elemento al analizador una sola vez: crear dos fuentes lanza una excepcion. */
+function ensureGraph(element: HTMLMediaElement): Graph | null {
+  const existing = MEDIA_GRAPHS.get(element);
+  if (existing) return existing;
+  try {
+    const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Context) return null;
+    const ctx = new Context();
+    const source = ctx.createMediaElementSource(element);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 128;
+    analyser.smoothingTimeConstant = 0.72;
+    source.connect(analyser);
+    analyser.connect(ctx.destination);
+    const graph = { ctx, source, analyser };
+    MEDIA_GRAPHS.set(element, graph);
+    return graph;
+  } catch {
+    return null;
+  }
+}
+
+const BARS = 40;
+
+/** Espectro en vivo del audio. Si el navegador no deja analizarlo, dibuja un patrón animado. */
+function AudioVisualizer({ media, playing }: { media: HTMLMediaElement | null; playing: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // Un origen externo (URL de Telegram) queda "tainted": el analizador devolveria
+    // silencio, asi que solo se conecta cuando el audio viene de un blob local.
+    const local = Boolean(media && media.currentSrc.startsWith("blob:"));
+    const graph = media && local ? ensureGraph(media) : null;
+    if (graph) void graph.ctx.resume().catch(() => undefined);
+    if (media && !local) {
+      const previous = MEDIA_GRAPHS.get(media);
+      if (previous) {
+        previous.source.disconnect();
+        previous.source.connect(previous.ctx.destination);
+      }
+    }
+
+    const analyser = graph?.analyser ?? null;
+    const data = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
+    let frame = 0;
+    let stopped = false;
+
+    const paint = (time: number) => {
+      const ratio = Math.min(2, window.devicePixelRatio || 1);
+      const width = canvas.clientWidth || 240;
+      const height = canvas.clientHeight || 64;
+      if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+      }
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      if (analyser && data) analyser.getByteFrequencyData(data);
+
+      const gap = 2;
+      const inset = 8;
+      const barWidth = Math.max(2, (width - gap * (BARS - 1)) / BARS);
+      for (let index = 0; index < BARS; index += 1) {
+        let value: number;
+        if (data) {
+          const from = Math.floor((index / BARS) * data.length * 0.72);
+          const to = Math.max(from + 1, Math.floor(((index + 1) / BARS) * data.length * 0.72));
+          let sum = 0;
+          for (let cursor = from; cursor < to; cursor += 1) sum += data[cursor];
+          value = sum / (to - from) / 255;
+        } else if (playing) {
+          value = 0.16 + 0.55 * Math.abs(Math.sin(time / 340 + index * 0.5)) * Math.abs(Math.cos(time / 1100 + index * 0.17));
+        } else {
+          value = 0.1;
+        }
+        const barHeight = Math.max(3, Math.min(1, value) * (height - inset));
+        const gradient = ctx.createLinearGradient(0, height, 0, height - barHeight);
+        gradient.addColorStop(0, "#8b5cf6");
+        gradient.addColorStop(1, "#5eead4");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.roundRect(index * (barWidth + gap), height - barHeight, barWidth, barHeight, barWidth / 2);
+        ctx.fill();
+      }
+      if (!stopped && playing) frame = requestAnimationFrame(paint);
+    };
+
+    paint(performance.now());
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [media, playing]);
+
+  return <canvas ref={canvasRef} className="h-16 w-full" aria-hidden="true" />;
 }
 
 function IconButton({
@@ -147,6 +274,12 @@ export function MediaPlayer({
 }) {
   const kind = mediaKindOf(node) ?? "audio";
   const mediaRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
+  const [mediaEl, setMediaEl] = useState<HTMLMediaElement | null>(null);
+  // Referencia estable: si cambia en cada render React la vuelve a llamar y entrariamos en bucle.
+  const attachMedia = useCallback((element: HTMLMediaElement | null) => {
+    mediaRef.current = element;
+    if (element) setMediaEl(element);
+  }, []);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const cacheRef = useRef<Map<string, string>>(new Map());
   const hideTimer = useRef<number | null>(null);
@@ -543,15 +676,25 @@ export function MediaPlayer({
         <p className="max-w-sm text-xs text-slate-300">
           {source.error ?? "El navegador no puede reproducir este formato. Descargalo para abrirlo con otra app."}
         </p>
+        {source.error && (
+          <button
+            type="button"
+            className="btn-ghost mt-1 text-xs"
+            onClick={() => {
+              setFailed(false);
+              source.retry();
+            }}
+          >
+            <RotateCw className="h-3.5 w-3.5" /> Reintentar
+          </button>
+        )}
       </div>
     </div>
   );
 
   const audioElement = (
     <audio
-      ref={(element) => {
-        mediaRef.current = element;
-      }}
+      ref={attachMedia}
       src={source.url ?? undefined}
       onLoadedMetadata={onLoaded}
       onTimeUpdate={onTime}
@@ -571,9 +714,7 @@ export function MediaPlayer({
       {kind === "video" ? (
         <div className="relative" onMouseMove={revealControls} onPointerDown={revealControls}>
           <video
-            ref={(element) => {
-              mediaRef.current = element;
-            }}
+            ref={attachMedia}
             src={source.url ?? undefined}
             className="max-h-[62vh] w-full rounded-xl bg-black object-contain"
             playsInline
@@ -613,32 +754,31 @@ export function MediaPlayer({
         </div>
       ) : (
         <>
-          <div className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-gradient-to-br from-ink-800 via-ink-900 to-ink-950 px-6 py-7">
+          <div className="relative overflow-hidden rounded-xl border border-white/[0.07] bg-gradient-to-br from-ink-800 via-ink-900 to-ink-950 px-4 py-5 sm:px-6">
             <div className="flex flex-col items-center gap-3">
               <div
-                className={`relative grid h-24 w-24 place-items-center rounded-3xl border border-white/10 bg-cloud-500/15 text-cloud-200 ${
+                className={`relative grid h-20 w-20 place-items-center rounded-3xl border border-white/10 bg-cloud-500/15 text-cloud-200 ${
                   playing ? "shadow-glow" : ""
                 }`}
               >
-                <Music4 className={`h-9 w-9 ${playing ? "animate-pulse" : ""}`} />
-                {playing && (
-                  <span className="absolute -bottom-2 flex items-end gap-0.5">
-                    {[0, 1, 2, 3].map((bar) => (
-                      <span
-                        key={bar}
-                        className="w-1 animate-[bounce_1s_infinite] rounded-full bg-cloud-300"
-                        style={{ height: `${6 + bar * 3}px`, animationDelay: `${bar * 0.12}s` }}
-                      />
-                    ))}
-                  </span>
-                )}
+                <Music4 className="h-8 w-8" />
               </div>
               <div className="text-center">
                 <p className="mx-auto max-w-md truncate text-sm font-semibold text-white">{node.name}</p>
                 <p className="mt-0.5 text-[11px] text-slate-500">
                   {formatBytes(node.size)}
                   {duration ? ` · ${formatDuration(duration)}` : ""}
+                  {source.streamed ? " · en directo" : ""}
                 </p>
+              </div>
+              <div className="w-full rounded-lg border border-white/[0.06] bg-black/25 px-2 pb-1.5 pt-1">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-500">
+                  <span>Vista previa</span>
+                  <span className={playing ? "text-emerald-300" : ""}>
+                    {playing ? "En vivo" : source.loading ? "Cargando" : "En pausa"}
+                  </span>
+                </div>
+                <AudioVisualizer media={mediaEl} playing={playing} />
               </div>
             </div>
             {loadingOverlay}

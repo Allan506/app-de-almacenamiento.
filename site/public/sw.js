@@ -1,6 +1,6 @@
 // Cachea el armazon de la app para que Nube abra al instante y funcione sin conexion.
 // Los archivos subidos nunca pasan por aqui: van directos a Telegram.
-const CACHE = "nube-shell-v4";
+const CACHE = "nube-shell-v5";
 const SHELL = ["./", "./index.html", "./favicon.svg", "./manifest.webmanifest", "./icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {

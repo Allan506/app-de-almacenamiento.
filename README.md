@@ -147,7 +147,9 @@ estatico (~270 KB): las subidas y descargas van directas entre tu navegador y Te
 ![Nube en GitHub Pages](docs/screenshots/pages-landing.png)
 
 Al abrir un archivo no hay que descargarlo: el reproductor de audio y video trae transporte completo,
-velocidad 0.5x-2x, repeticion, aleatorio, lista de la carpeta, ventana flotante y memoria de posicion; el
+velocidad 0.5x-2x, repeticion, aleatorio, lista de la carpeta, ventana flotante, memoria de posicion y una
+vista previa en vivo (espectro) mientras suena. Las descargas grandes se reanudan solas si la conexion se
+corta y, si el `fetch` falla, el audio se reproduce en directo desde Telegram. El
 resto de formatos se ven en la propia app (imagenes con zoom, PDF, texto, codigo, Markdown, JSON, CSV,
 ZIP y una ficha con descarga para lo que el navegador no sabe abrir). Desde la vista previa puedes
 renombrar, mover o eliminar sin volver a la lista.
