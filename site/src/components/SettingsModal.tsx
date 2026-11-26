@@ -9,6 +9,7 @@ import {
   Save,
   Smartphone,
   Trash2,
+  ZoomIn,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { normalizeConfig } from "../lib/config";
@@ -16,6 +17,7 @@ import { saveBlob } from "../lib/download";
 import { Vault } from "../lib/library";
 import { formatBytes } from "../lib/format";
 import { isStandalone, promptInstall, useInstallPrompt } from "../lib/pwa";
+import { useZoomLock } from "../lib/zoom";
 import type { VaultConfig } from "../lib/types";
 import { ConfirmDialog } from "./Dialogs";
 import { Modal } from "./Modal";
@@ -43,6 +45,7 @@ export function SettingsModal({
 }) {
   const toast = useToast();
   const canInstall = useInstallPrompt();
+  const [zoomLocked, setZoomLocked] = useZoomLock();
   const [draft, setDraft] = useState<TelegramDraft>({
     bot_token: config.bot_token,
     chat_id: config.chat_id,
@@ -236,6 +239,52 @@ export function SettingsModal({
           </section>
 
           <section>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Como se comporta en el movil
+            </h3>
+            <div className="mt-2 space-y-2">
+              <div className="flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                <ZoomIn className="mt-0.5 h-4 w-4 shrink-0 text-cloud-300" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-semibold text-white">Bloquear el zoom</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
+                    Mantiene la interfaz fija: sin pellizcar ni doble toque para ampliar. Desactivalo si necesitas
+                    agrandar el texto.
+                  </p>
+                </div>
+                <button
+                  role="switch"
+                  aria-checked={zoomLocked}
+                  aria-label="Bloquear el zoom"
+                  onClick={() => {
+                    setZoomLocked(!zoomLocked);
+                    toast.info(zoomLocked ? "Zoom desbloqueado" : "Zoom bloqueado", "Se guarda en este navegador.");
+                  }}
+                  className={`relative h-6 w-11 shrink-0 rounded-full border transition ${
+                    zoomLocked ? "border-cloud-400/40 bg-cloud-500/80" : "border-white/10 bg-white/10"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all ${
+                      zoomLocked ? "left-[1.5rem]" : "left-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
+                <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-cloud-300" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-semibold text-white">El boton atras no cierra la app</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
+                    Primero cierra lo que tengas abierto, despues vuelve a la carpeta anterior y por ultimo a Mi unidad.
+                    Para salir, pulsa atras dos veces seguidas.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
             <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Zona de riesgo</h3>
             <button className="btn-danger mt-2 px-3 py-2 text-[12px]" onClick={() => setConfirmWipe(true)}>
               <Trash2 className="h-4 w-4" /> Borrar los datos de este navegador
@@ -243,7 +292,7 @@ export function SettingsModal({
           </section>
 
           <p className="border-t border-white/[0.06] pt-3 text-[10px] leading-relaxed text-slate-600">
-            Nube 1.1 · Aplicacion web instalable. Tus archivos viven en tu espacio y el token nunca se comparte.
+            Nube 1.2 · Aplicacion web instalable. Tus archivos viven en tu espacio y el token nunca se comparte.
           </p>
         </div>
       </Modal>

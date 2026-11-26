@@ -13,6 +13,14 @@
     height: 100%;
   }
 
+  /* Sin zoom de pellizco ni doble toque: la app se comporta como una nativa. */
+  html.zoom-locked,
+  html.zoom-locked body {
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-ink-950 text-slate-200 antialiased;
     background-image:

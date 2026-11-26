@@ -111,6 +111,20 @@ leerlos. Para compartir, reenvia el mensaje desde Telegram o exporta el indice.
 
 ![Ajustes](screenshots/pages-settings.png)
 
+## En el movil
+
+La app se comporta como una nativa en el telefono:
+
+- **Zoom bloqueado**: `user-scalable=no`, `touch-action: pan-x pan-y` y cancelacion de los gestos de
+  pellizco de Safari. Se puede desactivar en **Ajustes → Como se comporta en el movil** si necesitas
+  ampliar el texto; la preferencia se guarda en el navegador (`nube-lite.zoom-lock`).
+- **El boton atras no cierra la app**: la app mantiene una entrada extra en el historial. Cada pulsacion
+  deshace una cosa, en este orden: cierra el modal abierto, cierra el menu lateral, sale de la carpeta,
+  vuelve a Mi unidad. Cuando no queda nada muestra *"Pulsa atras otra vez para salir"* y la segunda
+  pulsacion seguida (2 s) sale de verdad. En escritorio no se intercepta nada.
+
+![Ajustes en el movil](screenshots/pages-movil.png)
+
 ## Si no conecta
 
 La pantalla de conexion tiene un boton **Probar conexion** que comprueba cuatro cosas en orden y dice en cual
