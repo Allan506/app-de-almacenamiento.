@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { HttpTelegramTransport, TelegramError } from "../src/lib/telegram";
+import { HttpTelegramTransport, TelegramClient, TelegramError, type TelegramTransport } from "../src/lib/telegram";
 
 const TOKEN = "123456789:AAHfake-token-para-pruebas-1234567890";
 
@@ -10,7 +10,7 @@ const bytesOf = (size: number) => {
 };
 
 /** Respuesta que corta la conexion despues de `dropAfter` bytes. */
-function partialResponse(bytes: Uint8Array, dropAfter: number, status = 200, total = bytes.length) {
+function partialResponse(bytes: Uint8Array, dropAfter: number) {
   let offset = 0;
   const stream = new ReadableStream<Uint8Array>({
     pull(controller) {
@@ -23,29 +23,27 @@ function partialResponse(bytes: Uint8Array, dropAfter: number, status = 200, tot
       offset = end;
     },
   });
-  const headers: Record<string, string> = { "content-length": String(bytes.length) };
-  if (status === 206) headers["content-range"] = `bytes ${0}-${bytes.length - 1}/${total}`;
-  return new Response(stream, { status, headers });
+  return new Response(stream, { status: 200, headers: { "content-length": String(bytes.length) } });
 }
 
-function fullResponse(bytes: Uint8Array, from = 0, total = bytes.length) {
-  const slice = bytes.slice(from);
-  const headers: Record<string, string> = { "content-length": String(slice.length) };
-  if (from > 0) headers["content-range"] = `bytes ${from}-${total - 1}/${total}`;
-  return new Response(slice, { status: from > 0 ? 206 : 200, headers });
-}
-
-const requests: { url: string; range: string | null }[] = [];
-
-function stubFetch(handler: (range: string | null, call: number) => Response | Promise<Response>) {
-  requests.length = 0;
-  const fake = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const range = new Headers(init?.headers).get("range");
-    requests.push({ url: String(input), range });
-    return handler(range, requests.length);
+function fullResponse(bytes: Uint8Array) {
+  return new Response(new Blob([bytes as unknown as BlobPart]), {
+    status: 200,
+    headers: { "content-length": String(bytes.length) },
   });
-  vi.stubGlobal("fetch", fake);
-  return fake;
+}
+
+const requests: { range: string | null }[] = [];
+
+function stubFetch(handler: (call: number) => Response | Promise<Response>) {
+  requests.length = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ range: new Headers(init?.headers).get("range") });
+      return handler(requests.length);
+    }),
+  );
 }
 
 afterEach(() => {
@@ -53,13 +51,9 @@ afterEach(() => {
 });
 
 describe("descarga de trozos", () => {
-  it("reanuda con Range cuando la conexion se corta a mitad", async () => {
+  it("reintenta desde cero cuando la conexion se corta a mitad", async () => {
     const bytes = bytesOf(4096);
-    stubFetch((range) => {
-      if (!range) return partialResponse(bytes, 1024);
-      const from = Number(/bytes=(\d+)-/.exec(range)![1]);
-      return fullResponse(bytes, from);
-    });
+    stubFetch((call) => (call === 1 ? partialResponse(bytes, 1024) : fullResponse(bytes)));
 
     const transport = new HttpTelegramTransport(TOKEN);
     const blob = await transport.download("documents/cancion.flac");
@@ -67,36 +61,16 @@ describe("descarga de trozos", () => {
     expect(blob.size).toBe(4096);
     expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes);
     expect(requests).toHaveLength(2);
-    expect(requests[1].range).toBe("bytes=1024-");
   });
 
-  it("vuelve a empezar si el servidor ignora el rango", async () => {
+  it("nunca pide rangos: Telegram responde 405 al preflight de OPTIONS", async () => {
     const bytes = bytesOf(2048);
-    let attempt = 0;
-    stubFetch(() => {
-      attempt += 1;
-      return attempt === 1 ? partialResponse(bytes, 700) : fullResponse(bytes);
-    });
+    stubFetch((call) => (call === 1 ? partialResponse(bytes, 700) : fullResponse(bytes)));
 
     const transport = new HttpTelegramTransport(TOKEN);
-    const blob = await transport.download("documents/cancion.flac");
+    await transport.download("documents/cancion.flac");
 
-    expect(blob.size).toBe(2048);
-    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes);
-  });
-
-  it("descarta el rango si el preflight CORS lo bloquea", async () => {
-    const bytes = bytesOf(3000);
-    stubFetch((range) => {
-      if (range) throw new TypeError("Failed to fetch");
-      return requests.length === 1 ? partialResponse(bytes, 900) : fullResponse(bytes);
-    });
-
-    const transport = new HttpTelegramTransport(TOKEN);
-    const blob = await transport.download("documents/cancion.flac");
-
-    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes);
-    expect(requests.map((request) => request.range)).toEqual([null, "bytes=900-", null]);
+    expect(requests.every((request) => request.range === null)).toBe(true);
   });
 
   it("avisa en espanol cuando la red no deja descargar", async () => {
@@ -104,7 +78,8 @@ describe("descarga de trozos", () => {
 
     const transport = new HttpTelegramTransport(TOKEN);
     await expect(transport.download("documents/cancion.flac")).rejects.toThrow(/Se corto la conexion con Telegram/);
-  });
+    expect(requests).toHaveLength(6);
+  }, 15000);
 
   it("no reintenta si Telegram ya no tiene el archivo", async () => {
     stubFetch(() => new Response("", { status: 404 }));
@@ -133,5 +108,37 @@ describe("descarga de trozos", () => {
     expect(transport.fileUrl("documents/mi archivo.flac")).toBe(
       `https://api.telegram.org/file/bot${TOKEN}/documents/mi%20archivo.flac`,
     );
+  });
+});
+
+describe("reproduccion directa", () => {
+  class FakeTransport implements TelegramTransport {
+    async call<T>(method: string, payload: Record<string, string>): Promise<T> {
+      if (method === "getFile") return { file_path: `documents/${payload.file_id}.flac` } as T;
+      throw new Error(`metodo no esperado: ${method}`);
+    }
+    async download(): Promise<Blob> {
+      throw new Error("no deberia descargar");
+    }
+    fileUrl(filePath: string): string {
+      return `https://api.telegram.org/file/bot${TOKEN}/${filePath}`;
+    }
+  }
+
+  it("da la URL directa de un archivo de un trozo", async () => {
+    const client = new TelegramClient(new FakeTransport(), "42");
+    const url = await client.directUrl([{ file_id: "file-1", size: 10, message_id: 1 }]);
+
+    expect(url).toBe(`https://api.telegram.org/file/bot${TOKEN}/documents/file-1.flac`);
+  });
+
+  it("no intenta reproducir en directo un archivo de varios trozos", async () => {
+    const client = new TelegramClient(new FakeTransport(), "42");
+    const url = await client.directUrl([
+      { file_id: "file-1", size: 10, message_id: 1 },
+      { file_id: "file-2", size: 5, message_id: 2 },
+    ]);
+
+    expect(url).toBeNull();
   });
 });

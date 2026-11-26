@@ -63,6 +63,14 @@ para que el codigo OTP aparezca en la interfaz.
   `backend/tests/conftest.py`); cualquier modulo que lea ajustes al importar debe
   respetar ese orden. La suite debe pasar en SQLite y en PostgreSQL:
   `DATABASE_URL=postgresql://user:pass@localhost:5432/nube_test pytest -q`.
+- `site/src/lib/telegram.ts` descarga por trozos con reintentos y vigilante de 15 s sin bytes. No puede
+  reanudar con `Range`: Telegram responde 405 al preflight de `OPTIONS`, asi que cada reintento empieza el
+  trozo de cero. Un trozo suelto tampoco se puede reproducir (no lleva cabecera), por eso la reproduccion
+  en directo sin CORS solo vale para archivos de un trozo.
+- Ajustes → Diagnostico (`site/src/lib/diagnose.ts`) prueba token, chat, descarga y reproduccion directa.
+  Es la forma rapida de saber si el fallo es de red, de CORS o del formato.
+- Para probar la red sin Telegram real hay una variante del API dentro de Playwright
+  (`/tmp/pw/telegram-route.js`) que sirve igual contra el build local y contra el sitio publicado.
 - `app/database.py` distingue SQLite (hilos) de Postgres (pool reciclado); no mezclar
   `connect_args` de SQLite con un DSN de Postgres.
 - La suite del sitio (`cd site && npm test`) cubre troceado, transporte, arbol, zip, backstack y zoom.

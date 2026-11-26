@@ -230,7 +230,7 @@ export class Vault {
     return blob;
   }
 
-  /** URL que el navegador puede reproducir directamente (solo archivos de un trozo). */
+  /** URL que el navegador reproduce sin CORS (solo archivos de un trozo). */
   async directUrl(node: VaultNode): Promise<string | null> {
     if (node.kind !== "file" || this.config.driver !== "telegram" || !this.client) return null;
     try {
