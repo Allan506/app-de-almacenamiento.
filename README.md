@@ -147,7 +147,9 @@ estatico (~270 KB): las subidas y descargas van directas entre tu navegador y Te
 ![Nube en GitHub Pages](docs/screenshots/pages-landing.png)
 
 Es instalable (PWA): en Chrome aparece **Instalar Nube** y en iOS se anade a la pantalla de inicio, con
-armazon offline incluido.
+armazon offline incluido. En el movil se comporta como una app nativa: el zoom esta bloqueado (se puede
+soltar en Ajustes) y el boton atras no cierra la app, sino que cierra lo que tengas abierto, vuelve a la
+carpeta anterior y solo sale con una segunda pulsacion.
 
 ```bash
 cd site

@@ -1,6 +1,7 @@
 import { Cloud, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Landing } from "./components/Landing";
+import { setBackExitHint } from "./lib/backstack";
 import { Setup } from "./components/Setup";
 import { ToastProvider, useToast } from "./components/Toasts";
 import { clearConfig, normalizeConfig, readConfig, writeConfig } from "./lib/config";
@@ -100,9 +101,19 @@ function Shell() {
   );
 }
 
+function ExitHint() {
+  const toast = useToast();
+  useEffect(() => {
+    setBackExitHint(() => toast.info("Pulsa atras otra vez para salir", "Tu nube sigue abierta donde la dejaste."));
+    return () => setBackExitHint(null);
+  }, [toast]);
+  return null;
+}
+
 export function App() {
   return (
     <ToastProvider>
+      <ExitHint />
       <Shell />
     </ToastProvider>
   );

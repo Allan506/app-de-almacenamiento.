@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
+import { useBackHandler } from "../lib/backstack";
 
 type Props = {
   open: boolean;
@@ -19,6 +20,12 @@ const SIZES = {
 };
 
 export function Modal({ open, onClose, title, subtitle, children, footer, size = "md" }: Props) {
+  useBackHandler(() => {
+    if (!open) return false;
+    onClose();
+    return true;
+  }, 3);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {

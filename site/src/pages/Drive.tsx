@@ -21,6 +21,7 @@ import { StoragePanel } from "../components/StoragePanel";
 import { Topbar } from "../components/Topbar";
 import { UploadPanel } from "../components/UploadPanel";
 import { useToast } from "../components/Toasts";
+import { useBackHandler } from "../lib/backstack";
 import { saveBlob } from "../lib/download";
 import { filesFromDrop, filesFromInput, type PickedFile } from "../lib/files";
 import { formatBytes } from "../lib/format";
@@ -133,6 +134,28 @@ export function Drive({
   useEffect(() => {
     localStorage.setItem("nube-lite.view", view);
   }, [view]);
+
+  useBackHandler(() => {
+    if (mobileNav) {
+      setMobileNav(false);
+      return true;
+    }
+    if (search) {
+      setSearch("");
+      setDebounced("");
+      return true;
+    }
+    if (section !== "drive") {
+      setSection("drive");
+      setFolderId(null);
+      return true;
+    }
+    if (folderId) {
+      setFolderId(null);
+      return true;
+    }
+    return false;
+  }, 1);
 
   useEffect(() => {
     localStorage.setItem("nube-lite.sort", sort);
