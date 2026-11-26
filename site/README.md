@@ -17,7 +17,7 @@ Guia completa de despliegue, limites y seguridad: [`../docs/deploy-github-pages.
 ```
 src/
   lib/
-    telegram.ts   Cliente de la Bot API: troceado, subida con progreso, descarga y borrado
+    telegram.ts   Cliente de la Bot API: troceado, subida con progreso, descarga con reintentos y borrado
     library.ts    Vault: arbol de nodos, subidas, descargas, papelera y copias
     db.ts         IndexedDB (config, nodos, blobs locales, actividad)
     tree.ts       Logica pura del arbol: breadcrumb, dedupe, ciclos, estadisticas
