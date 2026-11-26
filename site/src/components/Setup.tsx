@@ -14,6 +14,7 @@ import {
 import { useState } from "react";
 import { normalizeChunkBytes, normalizeConfig } from "../lib/config";
 import { Vault } from "../lib/library";
+import { HttpTelegramTransport, TelegramClient, validateBotToken } from "../lib/telegram";
 import type { VaultConfig } from "../lib/types";
 import { TelegramConnect, chunkBytesFromMb, type TelegramDraft } from "./TelegramConnect";
 
@@ -33,13 +34,43 @@ export function Setup({ onReady }: { onReady: (config: VaultConfig) => void }) {
   const connectTelegram = async () => {
     setError(null);
     setStatus(null);
+    const invalid = validateBotToken(draft.bot_token);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     setBusy("telegram");
     try {
+      let chatId = draft.chat_id.trim();
+      if (!chatId) {
+        const client = new TelegramClient(new HttpTelegramTransport(draft.bot_token.trim()), "0");
+        setStatus("Comprobando el token...");
+        await client.verifyBot();
+        const deadline = Date.now() + 60_000;
+        setStatus("Esperando tu primer mensaje al bot...");
+        for (;;) {
+          const found = await client.discoverChatId();
+          if (found !== null) {
+            chatId = String(found);
+            break;
+          }
+          if (Date.now() > deadline) {
+            throw new Error(
+              "No llego ningun mensaje. Abre el enlace del bot en Telegram, pulsa Iniciar y escribe hola; despues pulsa Conectar otra vez.",
+            );
+          }
+          const left = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
+          setStatus(`Esperando tu primer mensaje al bot... (${left} s)`);
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+        setDraft((current) => ({ ...current, chat_id: chatId }));
+      }
+
       const config = normalizeConfig({
         ...base,
         driver: "telegram",
         bot_token: draft.bot_token,
-        chat_id: draft.chat_id,
+        chat_id: chatId,
         chunk_bytes: chunkBytesFromMb(draft.chunk_mb),
       });
       setStatus("Comprobando tu espacio...");
