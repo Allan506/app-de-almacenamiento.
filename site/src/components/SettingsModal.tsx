@@ -292,7 +292,7 @@ export function SettingsModal({
           </section>
 
           <p className="border-t border-white/[0.06] pt-3 text-[10px] leading-relaxed text-slate-600">
-            Nube 1.2 · Aplicacion web instalable. Tus archivos viven en tu espacio y el token nunca se comparte.
+            Nube 1.3 · Aplicacion web instalable. Tus archivos viven en tu espacio y el token nunca se comparte.
           </p>
         </div>
       </Modal>

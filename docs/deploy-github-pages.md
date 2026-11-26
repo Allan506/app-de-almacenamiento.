@@ -10,7 +10,7 @@ publica en GitHub Pages y guarda los archivos en tu propio espacio de Telegram.
 ## Que es (y que no es)
 
 Nube es una aplicacion con portada, asistente de bienvenida, carpetas, busqueda, favoritos, papelera,
-vista previa, descargas y ZIP. Detras usa **tu cuenta de Telegram como disco**, porque es el
+reproductor de audio y video, vista previa de cualquier archivo, descargas y ZIP. Detras usa **tu cuenta de Telegram como disco**, porque es el
 almacenamiento gratuito e ilimitado mas fiable que existe. No hay ningun bot con el que hablar: el bot es
 solo la llave de ese disco.
 
@@ -55,7 +55,7 @@ workflow.
 cd site
 npm ci
 npm run dev        # http://localhost:12001
-npm test           # troceado, transporte, arbol y zip
+npm test           # troceado, transporte, arbol, zip, reproductor y vistas previas
 npm run build      # genera site/dist
 python3 -m http.server 8000 --directory dist   # simula GitHub Pages
 ```
@@ -72,6 +72,42 @@ Una vez instalada abre a pantalla completa, con su icono, y el armazon funciona 
 archivos siguen necesitando red, porque viven en tu espacio.
 
 ![Mi unidad](screenshots/pages-drive.png)
+
+## Reproductor y vistas previas
+
+Cada archivo se abre con la vista que le corresponde, sin descargarlo antes:
+
+| Tipo | Que se ve |
+| --- | --- |
+| Imagen (JPG, PNG, GIF, WebP, AVIF, BMP, SVG) | Visor con zoom (25-400 %), arrastre y fondo neutro |
+| Video (MP4, WebM, MOV, M4V, MKV) | Reproductor con controles propios y ventana flotante |
+| Audio (MP3, WAV, OGG, FLAC, M4A, AAC, OPUS) | Reproductor con caratula animada y lista de la carpeta |
+| PDF | Visor del navegador y boton para abrirlo en otra pestana |
+| Texto, codigo, logs | Texto con numeros de linea y boton de copiar |
+| Markdown | Vista renderizada y codigo fuente, con o sin ajuste de linea |
+| JSON | Arbol coloreado, tamano y validacion |
+| CSV / TSV | Tabla con encabezados (hasta 500 filas) |
+| ZIP | Lista de su contenido sin descomprimirlo |
+| Cualquier otro (PSD, BLEND, ISO...) | Ficha con tipo, tamano y boton de descarga |
+
+![Vista previa de Markdown](screenshots/pages-preview.png)
+
+El reproductor funciona igual con audio y con video:
+
+- **Transporte**: anterior, retroceder 10 s, reproducir/pausar, avanzar 10 s, siguiente.
+- **Velocidad** de 0.5x a 2x, **repeticion** (apagada, lista, un archivo) y **aleatorio**.
+- **Lista de la carpeta**: cambia de pista sin cerrar el reproductor.
+- **Memoria de posicion**: al volver a abrir sigue donde lo dejaste, archivo por archivo.
+- **Ventana flotante** (video) y **pantalla completa**.
+- **Atajos**: espacio, flechas (5 s), J/L (10 s), N/P (pista), R (repeticion), S (aleatorio), F y M.
+- El progreso de descarga se muestra mientras llegan los trozos desde Telegram.
+
+![Reproductor de audio](screenshots/pages-player.png)
+
+Desde la misma vista previa puedes **renombrar**, **mover a otra carpeta**, **marcar como favorito** y
+**eliminar** (va a la papelera) sin volver a la lista.
+
+![Reproductor en el movil](screenshots/pages-player-mobile.png)
 
 ## Como funciona el troceado
 
@@ -118,6 +154,8 @@ La app se comporta como una nativa en el telefono:
 - **Zoom bloqueado**: `user-scalable=no`, `touch-action: pan-x pan-y` y cancelacion de los gestos de
   pellizco de Safari. Se puede desactivar en **Ajustes → Como se comporta en el movil** si necesitas
   ampliar el texto; la preferencia se guarda en el navegador (`nube-lite.zoom-lock`).
+- **Reproductor adaptado**: en pantallas pequenas los controles se compactan (play, pista anterior y
+  siguiente, velocidad, repeticion y lista) y la barra de progreso se arrastra con el dedo.
 - **El boton atras no cierra la app**: la app mantiene una entrada extra en el historial. Cada pulsacion
   deshace una cosa, en este orden: cierra el modal abierto, cierra el menu lateral, sale de la carpeta,
   vuelve a Mi unidad. Cuando no queda nada muestra *"Pulsa atras otra vez para salir"* y la segunda

@@ -22,10 +22,12 @@ src/
     db.ts         IndexedDB (config, nodos, blobs locales, actividad)
     tree.ts       Logica pura del arbol: breadcrumb, dedupe, ciclos, estadisticas
     zip.ts        Zip por streaming en el navegador (fflate)
+    preview.ts    Deteccion de tipo y parseo para las vistas previas (texto, md, json, csv, zip)
+    media.ts      Playlist, velocidad, repeticion y memoria de posicion del reproductor
     config.ts     Lectura y validacion de la configuracion
     files.ts      Arrastrar y soltar con carpetas
-  components/     Landing, Setup (asistente), barra lateral, topbar, tarjetas, modales, avisos
+  components/     Landing, Setup (asistente), barra lateral, topbar, tarjetas, modales, reproductor
   pages/Drive.tsx Estado principal de la unidad
 public/           manifest, service worker e iconos de la app instalable
-tests/            vitest: troceado, transporte, arbol, zip
+tests/            vitest: troceado, transporte, arbol, zip, reproductor y vistas previas
 ```
