@@ -12,10 +12,25 @@ export class TelegramError extends Error {
     message: string,
     readonly code: number,
     readonly retryAfter?: number,
+    /** Texto original de Telegram, para el diagnostico de conexion. */
+    readonly raw?: string,
   ) {
     super(message);
     this.name = "TelegramError";
   }
+}
+
+/** Un token de bot tiene la forma 123456789:AAH... */
+const BOT_TOKEN_PATTERN = /^\d{6,}:[A-Za-z0-9_-]{30,}$/;
+
+export function validateBotToken(token: string): string | null {
+  const clean = token.trim();
+  if (!clean) return "Pega el token que te dio BotFather";
+  if (!clean.includes(":")) return "Ese token no tiene el formato 123456789:AAH... Copialo entero desde BotFather";
+  if (!BOT_TOKEN_PATTERN.test(clean)) {
+    return "El token esta incompleto o tiene caracteres de mas. Copialo de nuevo desde BotFather";
+  }
+  return null;
 }
 
 export type TelegramFile = { name: string; blob: Blob };
@@ -56,7 +71,11 @@ const ERROR_HINTS: [RegExp, string][] = [
   [/not enough rights/i, "El bot no tiene permisos para escribir en ese chat."],
   [/request entity too large/i, "El trozo supera el limite de Telegram. Reduce el tamano de trozo en Ajustes."],
   [/too many requests/i, "Telegram ha limitado las peticiones. Espera unos segundos y reintenta."],
-  [/webhook is active/i, "El bot tiene un webhook activo; usa un bot nuevo o elimina el webhook."],
+  [/webhook is active/i, "El bot tiene un webhook activo. Pulsa Quitar webhook y reintenta."],
+  [/conflict/i, "El bot tiene un webhook activo. Pulsa Quitar webhook y reintenta."],
+  [/chat_id is empty/i, "Falta el chat donde guardar los archivos."],
+  [/peer_id_invalid/i, "Ese chat no existe o el bot no puede verlo. Abre el bot en Telegram, pulsa Iniciar y envia un mensaje."],
+  [/user is deactivated/i, "El bot esta desactivado. Crea uno nuevo en BotFather."],
   [/failed to get http url content/i, "Telegram no pudo procesar el archivo. Reintenta la subida."],
 ];
 
@@ -132,19 +151,31 @@ export class HttpTelegramTransport implements TelegramTransport {
           resolve(envelope);
           return;
         }
-        const description = envelope?.description ?? `Error ${request.status}`;
+        const description =
+          envelope?.description ??
+          (envelope
+            ? `Error ${request.status}`
+            : `Telegram respondio ${request.status} sin detalle. Revisa el token del bot y la conexion.`);
         reject(
           new TelegramError(
             describeTelegramError(description),
             envelope?.error_code ?? request.status,
             envelope?.parameters?.retry_after,
+            description,
           ),
         );
       };
 
       request.onerror = () => {
         signal?.removeEventListener("abort", onAbort);
-        reject(new TelegramError("No se pudo conectar con Telegram. Revisa tu conexion y el token del bot.", 0));
+        reject(
+          new TelegramError(
+            "No se pudo llegar a Telegram. Revisa la conexion, desactiva bloqueadores para este sitio o prueba otra red (algunas redes filtran Telegram).",
+            0,
+            undefined,
+            "network error",
+          ),
+        );
       };
 
       request.onabort = () => {
@@ -152,10 +183,16 @@ export class HttpTelegramTransport implements TelegramTransport {
         reject(new DOMException("Operacion cancelada", "AbortError"));
       };
 
-      const form = new FormData();
-      Object.entries(payload).forEach(([key, value]) => form.append(key, value));
-      if (file) form.append("document", file.blob, file.name);
-      request.send(form);
+      // Telegram rechaza (HTTP 400) un multipart sin partes: solo se usa para subir archivos.
+      if (file) {
+        const form = new FormData();
+        Object.entries(payload).forEach(([key, value]) => form.append(key, value));
+        form.append("document", file.blob, file.name);
+        request.send(form);
+      } else {
+        request.setRequestHeader("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8");
+        request.send(new URLSearchParams(payload).toString());
+      }
     });
   }
 
@@ -225,26 +262,45 @@ export class TelegramClient {
   ) {}
 
   async verify(): Promise<{ bot: BotInfo; chat: ChatInfo }> {
-    const [bot, chat] = await Promise.all([
-      this.transport.call<BotInfo>("getMe", {}),
-      this.transport.call<ChatInfo>("getChat", { chat_id: this.chatId }),
-    ]);
+    const [bot, chat] = await Promise.all([this.verifyBot(), this.verifyChat()]);
     return { bot, chat };
+  }
+
+  verifyBot(): Promise<BotInfo> {
+    return this.transport.call<BotInfo>("getMe", {});
+  }
+
+  verifyChat(): Promise<ChatInfo> {
+    return this.transport.call<ChatInfo>("getChat", { chat_id: this.chatId });
   }
 
   /** Ultimo chat que ha escrito al bot: evita tener que buscar el chat_id a mano. */
   async discoverChatId(): Promise<number | null> {
     type Update = {
       message?: { chat?: { id: number } };
+      edited_message?: { chat?: { id: number } };
       channel_post?: { chat?: { id: number } };
       my_chat_member?: { chat?: { id: number } };
     };
-    const updates = await this.transport.call<Update[]>("getUpdates", { limit: "20", timeout: "0" });
+    const updates = await this.transport.call<Update[]>("getUpdates", {
+      limit: "20",
+      timeout: "0",
+      allowed_updates: JSON.stringify(["message", "edited_message", "channel_post", "my_chat_member"]),
+    });
     for (const update of [...updates].reverse()) {
-      const id = update.message?.chat?.id ?? update.channel_post?.chat?.id ?? update.my_chat_member?.chat?.id;
+      const id =
+        update.message?.chat?.id ??
+        update.edited_message?.chat?.id ??
+        update.channel_post?.chat?.id ??
+        update.my_chat_member?.chat?.id;
       if (typeof id === "number") return id;
     }
     return null;
+  }
+
+  /** Un webhook activo impide leer mensajes con getUpdates. */
+  async clearWebhook(): Promise<void> {
+    await this.transport.call("deleteWebhook", { drop_pending_updates: "false" });
   }
 
   async upload(

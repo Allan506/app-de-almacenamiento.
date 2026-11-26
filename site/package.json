@@ -1,7 +1,7 @@
 {
   "name": "nube-lite",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Nube: aplicacion web instalable de almacenamiento ilimitado, 100% estatica para GitHub Pages",
   "scripts": {

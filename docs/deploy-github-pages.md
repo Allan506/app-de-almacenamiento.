@@ -111,12 +111,33 @@ leerlos. Para compartir, reenvia el mensaje desde Telegram o exporta el indice.
 
 ![Ajustes](screenshots/pages-settings.png)
 
+## Si no conecta
+
+La pantalla de conexion tiene un boton **Probar conexion** que comprueba cuatro cosas en orden y dice en cual
+falla: formato del token, respuesta del bot (`getMe`), mensajes recibidos (`getUpdates`) y acceso al chat
+(`getChat`).
+
+1. **Formato del token**: debe ser algo como `123456789:AAH...` (numero, dos puntos y 35 caracteres). Si copiaste
+   solo una parte, BotFather lo repite con `/token`.
+2. **El bot no responde**: token revocado o mal copiado. Genera uno nuevo con `/revoke`.
+3. **Sin mensajes todavia**: Telegram solo deja descubrir el chat si tu has escrito antes al bot. Abre el enlace
+   `t.me/tu_bot`, pulsa **Iniciar** y envia `hola`. Al pulsar **Conectar y entrar** sin `chat_id`, la app espera
+   hasta 60 segundos a ese primer mensaje y se conecta sola.
+4. **El bot tiene un webhook**: con un webhook activo Telegram bloquea `getUpdates`. La app lo detecta y ofrece
+   **Quitar webhook**.
+5. **No se pudo llegar a Telegram**: algunas redes, antivirus o VPN filtran `api.telegram.org`. Prueba otra red o
+   desactiva el bloqueador para este sitio. La app no usa ningun proxy: habla directo con Telegram.
+
+Detalle tecnico: las llamadas sin archivo se envian como `application/x-www-form-urlencoded`, porque Telegram
+responde `400` a un `multipart/form-data` sin partes (era el fallo que impedia conectar en la 1.0).
+
 ## Problemas frecuentes
 
 | Sintoma | Causa y solucion |
 | --- | --- |
 | `401 Unauthorized` | Token mal copiado o revocado. Copialo de nuevo desde BotFather. |
 | `chat not found` | No has abierto el bot o el `chat_id` no es el tuyo. Pulsa **Detectar** tras enviar un mensaje. |
+| `Telegram respondio 400 sin detalle` | Version antigua de la app o un proxy que altera el cuerpo. Recarga forzada (Ctrl+Shift+R). |
 | `429 Too Many Requests` | Telegram limita el ritmo. La app reintenta; sube menos archivos a la vez. |
 | No veo mis archivos en otro equipo | El indice es local. Exporta el indice en el equipo original e importalo en el nuevo (mismo espacio). |
 | La pagina carga en blanco | Comprueba que la URL de Pages termina en `/` y que el despliegue fue correcto en **Actions**. |

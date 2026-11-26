@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_CHUNK_BYTES,
   TelegramClient,
+  describeTelegramError,
   partFileName,
   planChunks,
+  validateBotToken,
   type Progress,
   type TelegramFile,
   type TelegramTransport,
@@ -11,6 +13,8 @@ import {
 
 class FakeTelegram implements TelegramTransport {
   documents = new Map<string, Blob>();
+  updates: unknown[] = [];
+  webhookCleared = false;
   calls: { method: string; payload: Record<string, string> }[] = [];
   deleted: number[] = [];
   failOnChunk?: number;
@@ -44,6 +48,11 @@ class FakeTelegram implements TelegramTransport {
         return { file_path: `documents/${payload.file_id}` } as T;
       case "deleteMessage":
         this.deleted.push(Number(payload.message_id));
+        return true as T;
+      case "getUpdates":
+        return this.updates as T;
+      case "deleteWebhook":
+        this.webhookCleared = true;
         return true as T;
       default:
         throw new Error(`metodo no esperado: ${method}`);
@@ -154,5 +163,58 @@ describe("partFileName", () => {
     expect(partFileName("informe final.pdf", 0, 3)).toBe("informe final.0001-0003.pdf");
     expect(partFileName("sin-extension", 1, 2)).toBe("sin-extension.0002-0002");
     expect(partFileName("raro/*.tar.gz", 0, 1)).toBe("raro_.tar.0001-0001.gz");
+  });
+});
+
+describe("validateBotToken", () => {
+  it("acepta un token real de BotFather", () => {
+    expect(validateBotToken("123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw")).toBeNull();
+    expect(validateBotToken("  123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw  ")).toBeNull();
+  });
+
+  it("rechaza token vacio, sin dos puntos o incompleto", () => {
+    expect(validateBotToken("")).toMatch(/BotFather/);
+    expect(validateBotToken("123456789")).toMatch(/123456789:AAH/);
+    expect(validateBotToken("123456789:abc")).toMatch(/incompleto|caracteres/);
+    expect(validateBotToken("bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw")).toMatch(/incompleto|caracteres/);
+  });
+});
+
+describe("describeTelegramError", () => {
+  it("traduce los errores habituales de Telegram a pasos accionables", () => {
+    expect(describeTelegramError("Unauthorized")).toMatch(/token/i);
+    expect(describeTelegramError("Bad Request: chat not found")).toMatch(/Iniciar/);
+    expect(describeTelegramError("Conflict: can't use getUpdates method while webhook is active")).toMatch(/webhook/i);
+    expect(describeTelegramError("Forbidden: bot was blocked by the user")).toMatch(/bloqueado/i);
+  });
+
+  it("deja pasar el texto original cuando no conoce el error", () => {
+    expect(describeTelegramError("Something new happened")).toBe("Something new happened");
+  });
+});
+
+describe("descubrir el chat", () => {
+  it("usa el ultimo chat que escribio al bot y pide solo los tipos utiles", async () => {
+    const transport = new FakeTelegram();
+    transport.updates = [
+      { message: { chat: { id: 11 } } },
+      { edited_message: { chat: { id: 22 } } },
+      { message: { chat: { id: 33 } } },
+    ];
+    const client = new TelegramClient(transport, "0");
+    await expect(client.discoverChatId()).resolves.toBe(33);
+    const call = transport.calls.find((item) => item.method === "getUpdates");
+    expect(call?.payload.allowed_updates).toContain("edited_message");
+  });
+
+  it("devuelve null cuando el bot aun no ha recibido mensajes", async () => {
+    const client = new TelegramClient(new FakeTelegram(), "0");
+    await expect(client.discoverChatId()).resolves.toBeNull();
+  });
+
+  it("puede quitar un webhook que bloquea getUpdates", async () => {
+    const transport = new FakeTelegram();
+    await new TelegramClient(transport, "0").clearWebhook();
+    expect(transport.webhookCleared).toBe(true);
   });
 });
