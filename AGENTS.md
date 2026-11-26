@@ -44,6 +44,13 @@ para que el codigo OTP aparezca en la interfaz.
   `card`, `skeleton` definidas en `src/index.css`). Toda llamada a la API pasa por
   `src/lib/api.ts`.
 - Tipos con scripts (HTML, SVG, XML) se sirven como descarga: mantener `INLINE_BLOCKED`.
+- Nube Lite (`site/`) es solo frontend: el "disco" es un chat de Telegram y el indice vive en
+  IndexedDB. Las llamadas sin archivo van como `application/x-www-form-urlencoded` (Telegram
+  responde 400 a un `multipart/form-data` vacio).
+- Comportamiento movil en `site/src/lib`: `zoom.ts` (viewport, `touch-action`, gestos de Safari) y
+  `backstack.ts` (tapon de historial que consume el atras por capas; solo en tactil o PWA). Los
+  componentes registran su capa con `useBackHandler(handler, prioridad)`; prioridad mayor se
+  consume antes.
 
 ## Trampas conocidas
 
@@ -58,6 +65,7 @@ para que el codigo OTP aparezca en la interfaz.
   `DATABASE_URL=postgresql://user:pass@localhost:5432/nube_test pytest -q`.
 - `app/database.py` distingue SQLite (hilos) de Postgres (pool reciclado); no mezclar
   `connect_args` de SQLite con un DSN de Postgres.
+- La suite del sitio (`cd site && npm test`) cubre troceado, transporte, arbol, zip, backstack y zoom.
 - Despliegue: `render.yaml` (Render free + Neon + Telegram) y `docs/deploy-render.md`.
   En Render el contenedor escucha en `$PORT` y `APP_URL` se deduce de
   `RENDER_EXTERNAL_URL`; el disco es efimero, no guardar nada solo en `data/`.
