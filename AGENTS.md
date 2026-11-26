@@ -61,3 +61,32 @@ para que el codigo OTP aparezca en la interfaz.
 - Despliegue: `render.yaml` (Render free + Neon + Telegram) y `docs/deploy-render.md`.
   En Render el contenedor escucha en `$PORT` y `APP_URL` se deduce de
   `RENDER_EXTERNAL_URL`; el disco es efimero, no guardar nada solo en `data/`.
+
+## Nube Lite (site/, GitHub Pages)
+
+Edicion sin backend que se publica en GitHub Pages y guarda los archivos en un chat de Telegram.
+
+```bash
+cd site && npm ci
+npm test        # vitest: troceado, transporte, arbol, zip
+npm run dev     # http://localhost:12001
+npm run build   # dist/ (base relativa, sin router: funciona en /<repo>/)
+```
+
+- `api.telegram.org` y `/file/bot<token>/...` responden con `access-control-allow-origin: *`, por eso el
+  navegador puede subir y descargar sin proxy: no hay que anadir un backend a esta edicion.
+- La Bot API limita a 20 MB por subida: `TelegramClient.upload` trocea en partes de 19 MB y guarda
+  `{file_id, message_id, size}` en `node.chunks`. Nunca cambies el troceado sin probar el reensamblado.
+- El indice (nodos, favoritos, papelera) vive en IndexedDB (`VaultDb`), no en el chat. Exportar/importar
+  JSON no incluye el token del bot.
+- El transporte de Telegram es una interfaz (`TelegramTransport`) para poder probar la orquestacion en
+  vitest sin red; los tests E2E se hacen con un Telegram falso via `page.route`.
+- `site/` no comparte codigo con `frontend/`: los estilos y tipos estan duplicados a proposito para no
+  arrastrar el cliente de API del backend.
+- Flujo de entrada: `Landing` (portada) → `Setup` (asistente de 2 pasos) → `Drive`. Si hay config guardada
+  se salta la portada. `App.tsx` decide el estado.
+- PWA: `public/manifest.webmanifest`, `public/sw.js` e iconos en `public/icons`. El service worker solo
+  cachea el armazon (nunca `api.telegram.org`); `initPwa()` en `src/lib/pwa.ts` registra el worker y el
+  evento `beforeinstallprompt` que alimenta el boton **Instalar Nube**.
+- Despliegue: `.github/workflows/pages.yml` (build + deploy-pages, `enablement: true`). Solo se dispara
+  con cambios en `site/`.
