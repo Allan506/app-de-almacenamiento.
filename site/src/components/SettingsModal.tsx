@@ -2,17 +2,21 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   Check,
+  ClipboardCopy,
   Database,
   FileUp,
   HardDrive,
   Loader2,
   Save,
   Smartphone,
+  Stethoscope,
   Trash2,
+  X,
   ZoomIn,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { normalizeConfig } from "../lib/config";
+import { diagnoseVault, reportText, type Check as DiagnosticCheck } from "../lib/diagnose";
 import { saveBlob } from "../lib/download";
 import { Vault } from "../lib/library";
 import { formatBytes } from "../lib/format";
@@ -55,6 +59,8 @@ export function SettingsModal({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  const [checks, setChecks] = useState<DiagnosticCheck[] | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
   const importRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -190,6 +196,62 @@ export function SettingsModal({
               vuelve a conectar desde la pantalla inicial.
             </section>
           )}
+
+          <section>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Diagnostico</h3>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              Si un archivo no suena o no se descarga, esto dice donde se corta: token, chat, descarga desde el navegador
+              y reproduccion directa.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                className="btn-ghost px-3 py-2 text-[12px]"
+                onClick={async () => {
+                  setDiagnosing(true);
+                  try {
+                    setChecks(await diagnoseVault(vault, config));
+                  } catch (cause) {
+                    setChecks([{ name: "Diagnostico", ok: false, detail: cause instanceof Error ? cause.message : "fallo" }]);
+                  } finally {
+                    setDiagnosing(false);
+                  }
+                }}
+                disabled={diagnosing}
+              >
+                {diagnosing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Stethoscope className="h-4 w-4" />}
+                Probar conexion
+              </button>
+              {checks && (
+                <button
+                  className="btn-ghost px-3 py-2 text-[12px]"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(reportText(checks, config)).then(
+                      () => toast.success("Informe copiado"),
+                      () => toast.error("No se pudo copiar"),
+                    );
+                  }}
+                >
+                  <ClipboardCopy className="h-4 w-4" />
+                  Copiar informe
+                </button>
+              )}
+            </div>
+            {checks && (
+              <ul className="mt-2 space-y-1 rounded-xl border border-white/[0.07] bg-white/[0.02] p-2">
+                {checks.map((check) => (
+                  <li key={check.name} className="flex items-start gap-2 px-1 py-0.5 text-[11px]">
+                    <span className={check.ok ? "mt-0.5 text-emerald-300" : "mt-0.5 text-rose-300"}>
+                      {check.ok ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="font-semibold text-slate-200">{check.name}</span>
+                      <span className="block break-words text-slate-500">{check.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
           <section>
             <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Copia de seguridad</h3>

@@ -54,7 +54,14 @@ type Source = {
   error: string | null;
   /** true cuando se reproduce directo desde Telegram (sin pasar por fetch). */
   streamed: boolean;
+  /** Motivo tecnico del fallo, para poder diagnosticarlo. */
+  detail: string | null;
 };
+
+function technical(cause: unknown): string {
+  if (cause instanceof Error) return `${cause.name}: ${cause.message}`;
+  return String(cause ?? "");
+}
 
 function friendly(cause: unknown): string {
   const message = cause instanceof Error ? cause.message : "";
@@ -66,7 +73,14 @@ function friendly(cause: unknown): string {
 }
 
 function useMediaSource(vault: Vault, node: VaultNode, cache: MutableRefObject<Map<string, string>>) {
-  const [state, setState] = useState<Source>({ url: null, loading: true, progress: 0, error: null, streamed: false });
+  const [state, setState] = useState<Source>({
+    url: null,
+    loading: true,
+    progress: 0,
+    error: null,
+    streamed: false,
+    detail: null,
+  });
   const [attempt, setAttempt] = useState(0);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
@@ -74,13 +88,13 @@ function useMediaSource(vault: Vault, node: VaultNode, cache: MutableRefObject<M
   useEffect(() => {
     const cached = cache.current.get(node.id);
     if (cached) {
-      setState({ url: cached, loading: false, progress: 1, error: null, streamed: false });
+      setState({ url: cached, loading: false, progress: 1, error: null, streamed: false, detail: null });
       return;
     }
 
     let cancelled = false;
     const controller = new AbortController();
-    setState({ url: null, loading: true, progress: 0, error: null, streamed: false });
+    setState({ url: null, loading: true, progress: 0, error: null, streamed: false, detail: null });
 
     void vault
       .readFile(
@@ -100,18 +114,25 @@ function useMediaSource(vault: Vault, node: VaultNode, cache: MutableRefObject<M
           URL.revokeObjectURL(value);
           cache.current.delete(key);
         }
-        setState({ url, loading: false, progress: 1, error: null, streamed: false });
+        setState({ url, loading: false, progress: 1, error: null, streamed: false, detail: null });
       })
       .catch(async (cause: unknown) => {
         if (cancelled || controller.signal.aborted) return;
-        // Plan B: dejar que el propio navegador descargue del tiron desde Telegram.
+        // Plan B: que el navegador descargue de Telegram sin CORS (solo archivos de un trozo).
         const direct = await vault.directUrl(node).catch(() => null);
         if (cancelled) return;
         if (direct) {
-          setState({ url: direct, loading: false, progress: 1, error: null, streamed: true });
+          setState({ url: direct, loading: false, progress: 1, error: null, streamed: true, detail: null });
           return;
         }
-        setState({ url: null, loading: false, progress: 0, error: friendly(cause), streamed: false });
+        setState({
+          url: null,
+          loading: false,
+          progress: 0,
+          error: friendly(cause),
+          streamed: false,
+          detail: technical(cause),
+        });
       });
 
     return () => {
@@ -676,6 +697,7 @@ export function MediaPlayer({
         <p className="max-w-sm text-xs text-slate-300">
           {source.error ?? "El navegador no puede reproducir este formato. Descargalo para abrirlo con otra app."}
         </p>
+        {source.detail && <p className="max-w-sm break-words text-[10px] text-slate-500">{source.detail}</p>}
         {source.error && (
           <button
             type="button"
