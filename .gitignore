@@ -15,6 +15,7 @@ data/
 # Frontend
 node_modules/
 frontend/dist/
+site/dist/
 .vite/
 
 # Entorno

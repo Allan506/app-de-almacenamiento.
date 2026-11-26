@@ -136,6 +136,44 @@ docker compose up -d --build
 
 El servicio expone el puerto `8000` (o `$PORT` si esta definido) y persiste datos en `./data`.
 
+## Nube Lite: version estatica para GitHub Pages
+
+El repo incluye ademas una edicion **sin backend** pensada para GitHub Pages: `site/`. Es una aplicacion
+web instalable (PWA) con portada, asistente de bienvenida, carpetas, busqueda, favoritos, papelera y ZIP.
+Guarda tus archivos en un chat de tu propio espacio de Telegram (troceados de 19 MB) y el indice en
+IndexedDB, asi que no necesita servidor, base de datos ni cuotas. GitHub Pages solo sirve el paquete
+estatico (~270 KB): las subidas y descargas van directas entre tu navegador y Telegram.
+
+![Nube en GitHub Pages](docs/screenshots/pages-landing.png)
+
+Es instalable (PWA): en Chrome aparece **Instalar Nube** y en iOS se anade a la pantalla de inicio, con
+armazon offline incluido.
+
+```bash
+cd site
+npm ci
+npm test        # troceado, transporte, arbol y zip
+npm run dev     # http://localhost:12001
+npm run build   # dist/
+```
+
+El workflow [`.github/workflows/pages.yml`](.github/workflows/pages.yml) compila, prueba y publica
+`site/dist` en GitHub Pages en cada push que toque `site/`. Para activarlo: **Settings → Pages →
+Source: GitHub Actions** y lanza el workflow.
+
+Diferencias con la edicion con backend:
+
+| | Nube (backend) | Nube Lite (GitHub Pages) |
+| --- | --- | --- |
+| Hosting | VPS, Docker o Render | GitHub Pages (estatico) |
+| Acceso | OTP por correo o Telegram | Token de tu propio bot |
+| Indice | SQLite/PostgreSQL | IndexedDB + copia exportable |
+| Enlaces publicos | Si | No (los archivos viven en un chat privado) |
+| Cuotas y ancho de banda | Las de tu servidor | Ninguna: descargas desde Telegram |
+
+Guia completa (paso a paso, limites reales y solucion de problemas):
+[`docs/deploy-github-pages.md`](docs/deploy-github-pages.md).
+
 ## Desplegar en Render (24/7, gratis)
 
 El repo incluye `render.yaml`, un blueprint listo para el plan gratuito de Render. Como ese plan no
@@ -161,6 +199,12 @@ Cubren autenticacion OTP, subida y descarga byte a byte, carpetas, papelera, bus
 
 ```bash
 DATABASE_URL=postgresql://usuario:clave@localhost:5432/nube_test python -m pytest -q
+```
+
+La edicion estatica tiene su propia suite (troceado de Telegram, reensamblado, arbol de carpetas y zip):
+
+```bash
+cd site && npm test
 ```
 
 ## API
@@ -214,6 +258,10 @@ frontend/
     context/       Sesion y notificaciones
     pages/         Login, Drive, pagina publica de enlace
     lib/           Cliente de API y utilidades de formato
+site/                 Nube Lite para GitHub Pages (sin backend)
+  src/lib/            Telegram (troceado), IndexedDB, arbol, zip
+  src/components/     Setup, unidad, modales
+  tests/              vitest
 ```
 
 ## Licencia

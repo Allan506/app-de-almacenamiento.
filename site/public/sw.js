@@ -1,0 +1,50 @@
+// Cachea el armazon de la app para que Nube abra al instante y funcione sin conexion.
+// Los archivos subidos nunca pasan por aqui: van directos a Telegram.
+const CACHE = "nube-shell-v1";
+const SHELL = ["./", "./index.html", "./favicon.svg", "./manifest.webmanifest", "./icons/icon-192.png"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(SHELL))
+      .then(() => self.skipWaiting())
+      .catch(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin || url.hostname.endsWith("telegram.org")) return;
+
+  if (request.mode === "navigate") {
+    event.respondWith(fetch(request).catch(() => caches.match("./index.html").then((hit) => hit || Response.error())));
+    return;
+  }
+
+  event.respondWith(
+    caches.match(request).then(
+      (hit) =>
+        hit ||
+        fetch(request).then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            void caches.open(CACHE).then((cache) => cache.put(request, copy));
+          }
+          return response;
+        }),
+    ),
+  );
+});
